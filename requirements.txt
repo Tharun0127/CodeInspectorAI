@@ -1,0 +1,27 @@
+# Core Framework
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+
+# LangGraph & LangChain
+langgraph==0.2.35
+langchain==0.3.3
+langchain-core==0.3.10
+langchain-groq==0.2.0
+
+# GitHub Integration
+PyGithub==2.4.0
+requests==2.32.3
+
+# Environment & Config
+python-dotenv==1.0.1
+pydantic==2.9.2
+
+# Async & HTTP
+httpx==0.27.2
+aiohttp==3.10.10
+
+# Utils
+python-multipart==0.0.9
+
+# Tests
+pytest==8.3.3
