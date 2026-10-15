@@ -1,0 +1,22 @@
+# Render Blueprint: https://render.com/docs/blueprint-spec
+# Deploy with: Render dashboard -> New -> Blueprint -> pick this repo.
+services:
+  - type: web
+    name: codeinspector-ai
+    runtime: docker
+    plan: free
+    autoDeploy: true
+    healthCheckPath: /health
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: GITHUB_WEBHOOK_SECRET
+        generateValue: true
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
+      - key: POST_COMMENTS
+        value: "true"
+      - key: MAX_DIFF_CHARS
+        value: "15000"

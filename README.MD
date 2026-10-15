@@ -14,7 +14,7 @@ then posts one structured, actionable review comment back on the PR.
 [![Groq](https://img.shields.io/badge/Groq-gpt--oss--120b-F55036?logo=groq&logoColor=white)](https://groq.com/)
 [![tests](https://img.shields.io/badge/tests-101%20passing-brightgreen)](#-testing)
 
-[Architecture](#-architecture) • [Sample Output](#-sample-output) • [Quick Start](#-quick-start) • [Engineering Notes](#-engineering-notes) • [Testing](#-testing)
+[Architecture](#-architecture) • [Sample Output](#-sample-output) • [Quick Start](#-quick-start) • [Deploy](#️-deploy) • [Engineering Notes](#-engineering-notes) • [Testing](#-testing)
 
 </div>
 
@@ -204,6 +204,55 @@ GitHub's 10-second webhook timeout is never at risk.
 
 ---
 
+## ☁️ Deploy
+
+The service ships as a Docker image, so it runs on any container host. It needs a
+**long-running** process: reviews run as background tasks after the webhook returns, so
+serverless platforms that freeze the function after the response (Vercel, Lambda) will
+silently drop them.
+
+### Docker (anywhere)
+
+```bash
+docker build -t codeinspector-ai .
+docker run -d -p 8000:8000 --env-file .env codeinspector-ai
+curl localhost:8000/health
+```
+
+The container listens on `$PORT` (default `8000`), runs as a non-root user and has a
+built-in `HEALTHCHECK` against `/health`.
+
+### Render (one click)
+
+`render.yaml` is a Render Blueprint. In the Render dashboard choose **New → Blueprint**,
+pick this repo, and fill in `GROQ_API_KEY` and `GITHUB_TOKEN` when prompted.
+`GITHUB_WEBHOOK_SECRET` is generated for you; copy it from the service's
+**Environment** tab into the GitHub webhook settings. Then point the webhook at
+`https://<service>.onrender.com/webhook`.
+
+> Render's free plan sleeps after ~15 minutes idle. The first webhook after a sleep
+> wakes it but can exceed GitHub's 10-second timeout, so GitHub marks that delivery as
+> failed even though the review still runs. Use a paid instance for reliable delivery.
+
+### Railway / Fly.io / a VPS
+
+All of these detect the `Dockerfile` automatically. Set the same environment variables
+as in `.env.example`, expose the port the platform assigns via `$PORT`, and use `/health`
+as the health check path.
+
+### Custom prompts in production
+
+`prompts/` is git-ignored, so deploys built from the repo use the built-in fallback
+prompts. To use your own, either build the image locally (a local `prompts/` folder is
+copied in), or mount the files and set `PROMPTS_DIR`:
+
+```bash
+docker run -d -p 8000:8000 --env-file .env \
+  -v "$PWD/prompts:/prompts:ro" -e PROMPTS_DIR=/prompts codeinspector-ai
+```
+
+---
+
 ## 🧠 Engineering notes
 
 The interesting decisions weren't about prompting — they were about what happens when
@@ -374,7 +423,7 @@ nobody trusts.
 - [ ] Repository-aware context via embeddings, so the reviewer sees beyond the diff
 - [ ] Configurable per-repo rules through a `.codeinspector.yml`
 - [ ] Review-quality feedback loop from 👍/👎 reactions on posted comments
-- [ ] Dockerfile + one-click deploy
+- [x] Dockerfile + one-click deploy
 
 ---
 

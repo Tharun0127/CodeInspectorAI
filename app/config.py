@@ -13,10 +13,11 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-PROMPTS_DIR = BASE_DIR / "prompts"
-
 # Load the project-level .env explicitly so imports work regardless of cwd.
 load_dotenv(BASE_DIR / ".env")
+
+# Prompts are kept out of git, so deployments can mount them elsewhere.
+PROMPTS_DIR = Path(os.getenv("PROMPTS_DIR", "").strip() or BASE_DIR / "prompts")
 
 
 def _env_bool(name: str, default: bool = False) -> bool:

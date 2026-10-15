@@ -31,3 +31,21 @@ jobs:
       - name: Run test suite
         # The suite is fully offline: GitHub and the LLM are both faked.
         run: python -m pytest -q
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t codeinspector-ai .
+
+      - name: Smoke test /health
+        run: |
+          docker run -d --name app -p 8000:8000 codeinspector-ai
+          for i in $(seq 1 20); do
+            curl -fsS localhost:8000/health && exit 0
+            sleep 1
+          done
+          docker logs app
+          exit 1
