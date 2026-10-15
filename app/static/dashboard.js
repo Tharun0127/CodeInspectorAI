@@ -107,7 +107,9 @@
     set("comments", stats.comments);
     set("security", stats.security);
     set("avg_duration", stats.avg_duration != null ? stats.avg_duration + "s" : "–");
-    document.querySelector('[data-kpi-sub="total"]').textContent = stats.failed ? stats.completed + " ok · " + stats.failed + " failed" : stats.completed + " completed";
+    const installs = stats.installations ? " · " + stats.installations + (stats.installations === 1 ? " install" : " installs") : "";
+    document.querySelector('[data-kpi-sub="total"]').textContent =
+      (stats.failed ? stats.completed + " ok · " + stats.failed + " failed" : stats.completed + " completed") + installs;
     document.querySelector('[data-kpi-sub="security"]').innerHTML = stats.critical
       ? '<span class="crit">▲ ' + stats.critical + " high / critical</span>" : "none high / critical";
   }

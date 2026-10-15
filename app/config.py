@@ -70,7 +70,9 @@ MAX_DIFF_CHARS: int = _env_int("MAX_DIFF_CHARS", 15_000)
 
 # ---- Web UI / dashboard ----
 # Review history lives in a SQLite file here. Mount a persistent disk in production.
-DATA_DIR: Path = Path(os.getenv("DATA_DIR", "").strip() or BASE_DIR / "data")
+# Serverless hosts (Vercel sets VERCEL=1) have a read-only filesystem except /tmp.
+_default_data_dir = Path("/tmp/codeinspector") if os.getenv("VERCEL") else BASE_DIR / "data"
+DATA_DIR: Path = Path(os.getenv("DATA_DIR", "").strip() or _default_data_dir)
 # Unlocks private-repo reviews on the dashboard. Unset = public repos only.
 DASHBOARD_TOKEN: str = os.getenv("DASHBOARD_TOKEN", "").strip()
 # The landing-page "try it" box: always a dry run, public repos only.

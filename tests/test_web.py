@@ -205,3 +205,16 @@ class TestPages:
     def test_static_assets_are_served(self):
         for name in ("styles.css", "common.js", "landing.js", "dashboard.js"):
             assert client.get("/static/" + name).status_code == 200
+
+
+class TestPublicConfig:
+    def test_no_app_means_no_install_link(self, monkeypatch):
+        monkeypatch.setattr(web_module.config, "GITHUB_APP_SLUG", "")
+        body = client.get("/api/config").json()
+        assert body["install_url"] == "" and body["bot_login"] == ""
+
+    def test_app_slug_gives_install_link_and_bot_name(self, monkeypatch):
+        monkeypatch.setattr(web_module.config, "GITHUB_APP_SLUG", "codeinspectorai")
+        body = client.get("/api/config").json()
+        assert body["install_url"] == "https://github.com/apps/codeinspectorai/installations/new"
+        assert body["bot_login"] == "codeinspectorai[bot]"

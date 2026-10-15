@@ -16,6 +16,11 @@
   <link rel="stylesheet" href="/static/landing.css">
 </head>
 <body>
+  <div class="installed-banner hidden" id="installed-banner" role="status">
+    <span aria-hidden="true">🎉</span>
+    <div><b>CodeInspectorAI is installed.</b> Open or push to a pull request on one of the repos you picked and a review lands in about a minute.</div>
+    <button class="btn btn-ghost" id="installed-close" aria-label="Dismiss">✕</button>
+  </div>
   <div class="bg-grid" aria-hidden="true"></div>
   <div class="bg-spot" aria-hidden="true"></div>
 
@@ -50,6 +55,13 @@
           <button class="btn btn-primary" id="inspect-btn" type="submit">Inspect PR <kbd>↵</kbd></button>
         </form>
         <p class="hint mono">↳ dry run · nothing is posted to GitHub · any public repo</p>
+        <div class="install-row hidden" id="hero-install">
+          <a class="btn btn-gh" data-install-link href="#" rel="noopener">
+            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+            Install on GitHub, free
+          </a>
+          <span class="muted">Pick your repos. No tokens to share.</span>
+        </div>
         <p class="form-error hidden" id="form-error" role="alert"></p>
       </div>
 
@@ -142,6 +154,22 @@
         <h2>On your repos in three steps.</h2>
         <p class="lead">Self-hosted, your keys, your infrastructure. Runs anywhere a container runs.</p>
       </div>
+      <div class="app-install card hidden" id="app-install">
+        <div class="app-install-copy">
+          <span class="kicker">// recommended</span>
+          <h3>Install the GitHub App</h3>
+          <ul class="checks">
+            <li><b>Click install</b>, choose which repos it can see, approve.</li>
+            <li><b>No webhook setup.</b> GitHub tells the app about every pull request.</li>
+            <li><b>No shared secrets.</b> Each review uses a key scoped to your repos that expires within an hour.</li>
+            <li><b>Comments come from <code data-bot-name>the app's bot account</code></b>, not a person.</li>
+            <li><b>Uninstall anytime</b> in GitHub settings, and access is cut immediately.</li>
+          </ul>
+        </div>
+        <a class="btn btn-primary btn-lg" data-install-link href="#" rel="noopener">Install on GitHub →</a>
+      </div>
+      <p class="self-host-label hidden" id="self-host-label">Or self-host your own instance:</p>
+
       <div class="steps">
         <div class="step card">
           <span class="step-n mono">1</span>

@@ -213,10 +213,34 @@
     card.style.setProperty("--fy", e.clientY - r.top + "px");
   }));
 
+  // ------------------------------------------------ GitHub App
+  async function loadConfig() {
+    let cfg;
+    try { cfg = await api("/api/config"); } catch (_) { return; }
+    if (cfg.install_url) {
+      document.querySelectorAll("[data-install-link]").forEach((a) => { a.href = cfg.install_url; });
+      ["#hero-install", "#app-install", "#self-host-label"].forEach((sel) => $(sel).classList.remove("hidden"));
+      if (cfg.bot_login) document.querySelectorAll("[data-bot-name]").forEach((el) => { el.textContent = cfg.bot_login; });
+    }
+    if (cfg.demo_enabled === false) {
+      $("#inspect-form").classList.add("hidden");
+      document.querySelector(".hint").classList.add("hidden");
+    }
+  }
+
+  // GitHub sends people back here after they install (the app's "Setup URL").
+  const params = new URLSearchParams(location.search);
+  if (params.get("setup_action") === "install" || params.get("setup_action") === "update") {
+    $("#installed-banner").classList.remove("hidden");
+    history.replaceState(null, "", "/");
+  }
+  $("#installed-close").addEventListener("click", () => $("#installed-banner").classList.add("hidden"));
+
   // ------------------------------------------------ boot
   playDiff();
   playArch();
   loadStats();
-  const shared = new URLSearchParams(location.search).get("r");
+  loadConfig();
+  const shared = params.get("r");
   if (shared) watch(shared, false);
 })();

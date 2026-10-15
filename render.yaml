@@ -12,6 +12,13 @@ services:
         sync: false
       - key: GITHUB_TOKEN
         sync: false
+      # GitHub App (see README > GitHub App). Leave empty to use GITHUB_TOKEN only.
+      - key: GITHUB_APP_ID
+        sync: false
+      - key: GITHUB_APP_SLUG
+        sync: false
+      - key: GITHUB_APP_PRIVATE_KEY
+        sync: false
       - key: GITHUB_WEBHOOK_SECRET
         generateValue: true
       - key: DASHBOARD_TOKEN

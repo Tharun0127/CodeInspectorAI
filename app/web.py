@@ -7,6 +7,7 @@ POST /api/reviews         start a demo review (dry run, public repos only)
 GET  /api/reviews         recent reviews
 GET  /api/reviews/{id}    one review, including live pipeline progress
 GET  /api/stats           aggregate numbers for the dashboard
+GET  /api/config          what the frontend should offer (install link, demo)
 
 Private-repo reviews are only returned with a valid X-Dashboard-Token header.
 """
@@ -27,6 +28,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from app import config
+from app.github import install_url
 from app.runner import PIPELINE, get_store, is_public_repo, run_tracked
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -113,6 +115,13 @@ def api_root() -> Dict[str, Any]:
     return {"service": "CodeInspectorAI", "status": "running", "docs": "/docs"}
 
 
+@router.get("/api/config")
+def public_config() -> Dict[str, Any]:
+    slug = config.GITHUB_APP_SLUG
+    return {"install_url": install_url(), "bot_login": f"{slug}[bot]" if slug else "",
+            "demo_enabled": config.DEMO_ENABLED}
+
+
 @router.post("/api/reviews", status_code=202)
 def start_demo_review(body: DemoRequest, request: Request) -> Dict[str, Any]:
     if not config.DEMO_ENABLED:
@@ -189,6 +198,7 @@ def stats(x_dashboard_token: Optional[str] = Header(default=None)) -> Dict[str, 
     return {
         "admin": admin,
         "total": len(reviews),
+        "installations": get_store().count_installations(),
         "completed": len(finished),
         "failed": sum(1 for r in reviews if r["status"] == "failed"),
         "avg_score": round(sum(scores) / len(scores), 1) if scores else None,

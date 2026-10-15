@@ -76,7 +76,8 @@ def app_configured() -> bool:
 
 
 def _integration() -> GithubIntegration:
-    auth = Auth.AppAuth(int(config.GITHUB_APP_ID), config.GITHUB_APP_PRIVATE_KEY)
+    # A str app id on purpose: PyJWT >= 2.10 rejects a numeric "iss" claim.
+    auth = Auth.AppAuth(config.GITHUB_APP_ID, config.GITHUB_APP_PRIVATE_KEY)
     return GithubIntegration(auth=auth, base_url=GITHUB_API_URL)
 
 

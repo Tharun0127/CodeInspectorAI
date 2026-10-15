@@ -135,3 +135,29 @@
 .cta { margin-top: 56px; padding: 38px; display: flex; flex-wrap: wrap; gap: 24px; align-items: center; justify-content: space-between; position: relative; overflow: hidden; }
 .cta::before { content: ""; position: absolute; inset: 0; background: radial-gradient(500px circle at 100% 0%, rgba(139, 123, 255, 0.18), transparent 60%); pointer-events: none; }
 .cta h2 code { color: #ff8aa8; font-size: 0.85em; }
+
+/* ---------- GitHub App install ---------- */
+.install-row { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 22px; font-size: 14px; }
+.btn-gh { background: #f0f3f6; color: #0d1117; border-color: transparent; }
+.btn-gh:hover { background: #fff; }
+.btn-lg { height: 48px; padding: 0 22px; font-size: 15px; }
+.app-install {
+  display: flex; flex-wrap: wrap; gap: 28px; align-items: center; justify-content: space-between;
+  padding: 30px; margin-bottom: 26px; border-color: rgba(61, 245, 167, 0.35);
+  background: linear-gradient(135deg, rgba(61, 245, 167, 0.07), rgba(139, 123, 255, 0.06)), var(--panel);
+}
+.app-install h3 { font-size: 24px; margin: 6px 0 14px; }
+.app-install-copy { flex: 1 1 420px; }
+.checks { list-style: none; padding: 0; margin: 0; display: grid; gap: 9px; color: var(--text-2); font-size: 15px; }
+.checks li { padding-left: 26px; position: relative; }
+.checks li::before { content: "✓"; position: absolute; left: 0; color: var(--accent); font-weight: 700; }
+.checks b { color: var(--text); font-weight: 600; }
+.checks code { font-size: 13px; color: var(--accent); }
+.self-host-label { color: var(--muted); font-size: 14px; margin: 0 0 14px; font-family: var(--mono); }
+.installed-banner {
+  position: fixed; z-index: 200; left: 50%; top: 76px; transform: translateX(-50%);
+  width: min(720px, calc(100% - 32px)); display: flex; gap: 12px; align-items: center;
+  padding: 14px 16px; border-radius: 12px; background: #0f1d17; border: 1px solid rgba(61, 245, 167, 0.5);
+  box-shadow: var(--shadow); font-size: 14.5px;
+}
+.installed-banner .btn { height: 32px; padding: 0 10px; margin-left: auto; }

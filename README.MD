@@ -267,6 +267,63 @@ docker run -d -p 8000:8000 --env-file .env \
 
 ---
 
+## 🤖 GitHub App: let anyone install it
+
+Run as a **GitHub App**, CodeInspectorAI works like any app from the Marketplace:
+
+- A developer clicks **Install**, picks which repos it may see, and approves.
+- GitHub then sends the app every pull request event on those repos. Nobody sets up a webhook.
+- For each review, the server swaps the app's private key for an **installation token**
+  that only works on that installation's repos and expires within an hour.
+  Nobody shares a password or personal token.
+- Comments appear from **`<your-app>[bot]`**.
+- Uninstalling (GitHub → Settings → Applications) cuts access immediately, and the server
+  forgets any cached token for that installation.
+
+### Register the app (one time, ~5 minutes)
+
+1. Deploy the server first (see [Deploy](#️-deploy)) so you have its URL.
+2. Go to **GitHub → Settings → Developer settings → GitHub Apps → New GitHub App**
+   (or under your organisation's settings to own it as an org) and fill in:
+
+   | Field | Value |
+   | --- | --- |
+   | GitHub App name | e.g. `CodeInspectorAI` (its URL slug becomes `GITHUB_APP_SLUG`) |
+   | Homepage URL | `https://<your-host>/` |
+   | Setup URL | `https://<your-host>/` (tick **Redirect on update**) |
+   | Webhook URL | `https://<your-host>/webhook` (**Active** ticked) |
+   | Webhook secret | a long random string, the same value as `GITHUB_WEBHOOK_SECRET` |
+   | Repository permissions | **Pull requests: Read & write** · **Contents: Read-only** · Metadata: Read-only (automatic) |
+   | Subscribe to events | **Pull request** |
+   | Where can it be installed? | **Any account** (or *Only this account* while testing) |
+
+3. Create it, then on the app's page note the **App ID** and click
+   **Generate a private key** (downloads a `.pem` file).
+4. Set these on the server and redeploy:
+
+   ```bash
+   GITHUB_APP_ID=123456
+   GITHUB_APP_SLUG=codeinspectorai          # from https://github.com/apps/<slug>
+   GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----
+...
+-----END RSA PRIVATE KEY-----"
+   GITHUB_WEBHOOK_SECRET=<the webhook secret from step 2>
+   ```
+
+   The key can be pasted with real newlines, on one line with `
+` separators, or
+   mounted as a file via `GITHUB_APP_PRIVATE_KEY_PATH` (e.g. a Render Secret File at
+   `/etc/secrets/github-app.pem`).
+
+5. Check `GET /health` shows `"github_app_configured": true`. The landing page now
+   shows **Install on GitHub**, linking to `https://github.com/apps/<slug>/installations/new`.
+
+`GITHUB_TOKEN` becomes optional: it's only used for repos where the app isn't installed,
+for example the public "try it" demo. Setting one raises GitHub's rate limit for those
+reads from 60 to 5,000 per hour.
+
+---
+
 ## 🧠 Engineering notes
 
 The interesting decisions weren't about prompting — they were about what happens when
