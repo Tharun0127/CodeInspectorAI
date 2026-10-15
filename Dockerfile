@@ -13,8 +13,10 @@ RUN pip install -r requirements.txt
 
 COPY . .
 
-RUN useradd --create-home --uid 1000 appuser
+RUN useradd --create-home --uid 1000 appuser     && mkdir -p /app/data && chown appuser /app/data
 USER appuser
+# Review history for the dashboard. Mount a volume here to keep it across deploys.
+VOLUME ["/app/data"]
 
 EXPOSE 8000
 

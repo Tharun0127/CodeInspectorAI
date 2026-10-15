@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CodeInspectorAI</title>
+  <meta name="description" content="A multi-agent AI reviewer for GitHub pull requests. Code review and security scanning run in parallel, then one structured comment lands on your PR.">
+  <meta property="og:title" content="CodeInspectorAI: every PR reviewed in under a minute">
+  <meta property="og:description" content="Parallel LangGraph agents review code quality and hunt vulnerabilities on every pull request.">
+  <meta name="theme-color" content="#07090d">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%233df5a7'/><text x='16' y='22' font-family='monospace' font-size='15' font-weight='800' text-anchor='middle' fill='%2304140d'>{}</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/landing.css">
+</head>
+<body>
+  <div class="bg-grid" aria-hidden="true"></div>
+  <div class="bg-spot" aria-hidden="true"></div>
+
+  <nav class="nav">
+    <div class="wrap">
+      <a class="brand" href="/"><span class="brand-mark">{}</span>CodeInspectorAI <small>v1.0</small></a>
+      <div class="nav-links">
+        <a class="hide-sm" href="#how">How it works</a>
+        <a class="hide-sm" href="#features">Features</a>
+        <a class="hide-sm" href="#install">Install</a>
+        <a href="/dashboard">Dashboard</a>
+        <a class="btn" href="https://github.com/Tharun0127/CodeInspectorAI" target="_blank" rel="noopener">
+          <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          <span class="hide-sm">Star on GitHub</span>
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ================= HERO ================= -->
+  <header class="hero">
+    <div class="wrap hero-grid">
+      <div class="hero-copy">
+        <span class="eyebrow"><span class="dot pulse"></span>multi-agent PR review · LangGraph + Groq</span>
+        <h1>Every pull request,<br><span class="grad">reviewed before your coffee cools.</span></h1>
+        <p class="lead">Two AI agents read your diff <b>at the same time</b>: one for bugs and code quality, one hunting vulnerabilities and leaked secrets. Then <b>one</b> clear comment lands on the PR, updated in place on every push.</p>
+
+        <form class="inspect" id="inspect-form" autocomplete="off">
+          <label for="pr-url" class="sr">Pull request URL</label>
+          <span class="prompt" aria-hidden="true">$ inspect</span>
+          <input id="pr-url" name="pr_url" placeholder="https://github.com/owner/repo/pull/123" spellcheck="false" required>
+          <button class="btn btn-primary" id="inspect-btn" type="submit">Inspect PR <kbd>↵</kbd></button>
+        </form>
+        <p class="hint mono">↳ dry run · nothing is posted to GitHub · any public repo</p>
+        <p class="form-error hidden" id="form-error" role="alert"></p>
+      </div>
+
+      <div class="hero-visual" aria-hidden="true">
+        <div class="diff-card">
+          <div class="diff-bar">
+            <span class="lights"><i></i><i></i><i></i></span>
+            <span class="mono">api/handlers.py</span>
+            <span class="diff-stat mono"><span class="add">+6</span> <span class="del">−1</span></span>
+          </div>
+          <div class="diff-body mono" id="demo-diff"></div>
+        </div>
+        <div class="float-badge fb-1"><span class="pill s-critical"><span class="ic">▲</span>critical</span> eval() on user input</div>
+        <div class="float-badge fb-2"><span class="pill s-serious"><span class="ic">▲</span>high</span> hardcoded API key</div>
+        <div class="float-badge fb-3"><span class="pill s-good"><span class="ic">✓</span>verdict</span> reviewed in <b>18.4s</b></div>
+      </div>
+    </div>
+
+    <div class="wrap stats-strip hidden" id="stats-strip">
+      <div><b data-stat="total">0</b><span>PRs reviewed</span></div>
+      <div><b data-stat="comments">0</b><span>review comments</span></div>
+      <div><b data-stat="security">0</b><span>security findings</span></div>
+      <div><b data-stat="avg_duration">–</b><span>avg. review time</span></div>
+    </div>
+  </header>
+
+  <!-- ================= LIVE RUN ================= -->
+  <section class="section hidden" id="try">
+    <div class="wrap">
+      <div class="run-head">
+        <div>
+          <span class="kicker mono" id="run-kicker">● live run</span>
+          <h2 id="run-title">Inspecting…</h2>
+        </div>
+        <span id="run-elapsed" class="elapsed mono">0.0s</span>
+      </div>
+      <div class="card run-card">
+        <div id="pipeline"></div>
+        <div class="console" id="console" aria-live="polite"></div>
+      </div>
+      <div id="result" class="result"></div>
+    </div>
+  </section>
+
+  <!-- ================= HOW IT WORKS ================= -->
+  <section class="section" id="how">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="kicker">// how it works</span>
+        <h2>A graph, not a chain.</h2>
+        <p class="lead">Built as a stateful LangGraph. The review and security agents run in the same superstep, so you wait for the slower one, not both added together.</p>
+      </div>
+      <div class="card arch">
+        <div id="arch-pipeline"></div>
+        <div class="arch-notes">
+          <div><span class="mono k">01</span><b>Abort early.</b> PR can't be fetched? The graph routes straight to the end: zero tokens burned on an empty diff.</div>
+          <div><span class="mono k">02</span><b>Fan out.</b> Quality review and vulnerability hunting run concurrently, plus a regex sweep for leaked keys the LLM might miss.</div>
+          <div><span class="mono k">03</span><b>Code decides.</b> The LLM finds problems; deterministic rules set the verdict. A critical finding <i>always</i> means changes requested.</div>
+          <div><span class="mono k">04</span><b>One comment.</b> A hidden marker lets the bot edit its previous review, so 20 pushes leave exactly one review, always current.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= FEATURES ================= -->
+  <section class="section" id="features">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="kicker">// features</span>
+        <h2>Built like infrastructure, <span class="grad">not a demo.</span></h2>
+      </div>
+      <div class="features">
+        <article class="feature"><span class="f-ic">⚡</span><h3>Parallel agents</h3><p>Review and security scanning share one superstep. Roughly half the wall-clock of a sequential chain.</p></article>
+        <article class="feature"><span class="f-ic">🛡️</span><h3>Defence in depth</h3><p>A deterministic secret scanner runs alongside the LLM. An obvious leaked key is caught even if the model misses it.</p></article>
+        <article class="feature"><span class="f-ic">⚖️</span><h3>Deterministic verdicts</h3><p>The model reports findings; code decides approve vs. request changes. No verdicts by vibes.</p></article>
+        <article class="feature"><span class="f-ic">🩹</span><h3>Fail-soft</h3><p>Lose a node and you still get a review, flagged <code>partial</code> with the error disclosed. Never a silent crash.</p></article>
+        <article class="feature"><span class="f-ic">🔁</span><h3>Idempotent comments</h3><p>Ten commits, one comment, edited in place. Your PR timeline stays readable.</p></article>
+        <article class="feature"><span class="f-ic">🎯</span><h3>Smart diff budgeting</h3><p>Lockfiles, bundles and binaries are stripped, and what's omitted is named, so the model knows what it didn't see.</p></article>
+        <article class="feature"><span class="f-ic">🔒</span><h3>Verified webhooks</h3><p>HMAC-SHA256 signatures, draft filtering and background execution. GitHub never waits on an LLM.</p></article>
+        <article class="feature"><span class="f-ic">🔌</span><h3>Three entry points</h3><p>GitHub webhook, REST API or CLI. Same graph behind all of them.</p></article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= INSTALL ================= -->
+  <section class="section" id="install">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="kicker">// install</span>
+        <h2>On your repos in three steps.</h2>
+        <p class="lead">Self-hosted, your keys, your infrastructure. Runs anywhere a container runs.</p>
+      </div>
+      <div class="steps">
+        <div class="step card">
+          <span class="step-n mono">1</span>
+          <h3>Deploy</h3>
+          <p>One click on Render, or run the container yourself.</p>
+          <a class="btn btn-primary" href="https://render.com/deploy?repo=https://github.com/Tharun0127/CodeInspectorAI" target="_blank" rel="noopener">Deploy to Render ↗</a>
+          <div class="code"><button class="copy" data-copy aria-label="Copy command">copy</button><pre><code>docker run -p 8000:8000 \
+  -e GROQ_API_KEY=gsk_… \
+  -e GITHUB_TOKEN=ghp_… \
+  codeinspector-ai</code></pre></div>
+        </div>
+        <div class="step card">
+          <span class="step-n mono">2</span>
+          <h3>Add a webhook</h3>
+          <p>Repo → Settings → Webhooks. Send <b>Pull requests</b> events.</p>
+          <div class="code"><button class="copy" data-copy aria-label="Copy settings">copy</button><pre><code>Payload URL   https://&lt;host&gt;/webhook
+Content type  application/json
+Secret        $GITHUB_WEBHOOK_SECRET
+Events        Pull requests</code></pre></div>
+        </div>
+        <div class="step card">
+          <span class="step-n mono">3</span>
+          <h3>Open a PR</h3>
+          <p>A review lands in about a minute, and every push updates the same comment.</p>
+          <div class="code"><button class="copy" data-copy aria-label="Copy commands">copy</button><pre><code>git checkout -b feature/thing
+git push -u origin HEAD
+# 🔍 CodeInspectorAI is on it</code></pre></div>
+        </div>
+      </div>
+
+      <div class="cta card">
+        <div>
+          <h2 style="font-size:clamp(26px,3.4vw,36px)">Stop reviewing the same <code>eval()</code> twice.</h2>
+          <p class="lead" style="margin-top:8px">Paste a PR and watch the agents work.</p>
+        </div>
+        <a class="btn btn-primary" href="#top" id="cta-try">Try it on a PR →</a>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="wrap">
+      <span><span class="mono">{}</span> CodeInspectorAI · built with LangGraph, FastAPI &amp; Groq</span>
+      <span style="display:flex;gap:18px">
+        <a href="/dashboard">Dashboard</a>
+        <a href="/docs">API docs</a>
+        <a href="https://github.com/Tharun0127/CodeInspectorAI" target="_blank" rel="noopener">GitHub</a>
+      </span>
+    </div>
+  </footer>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js" defer></script>
+  <script src="/static/common.js" defer></script>
+  <script src="/static/landing.js" defer></script>
+</body>
+</html>

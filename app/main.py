@@ -3,10 +3,12 @@ FastAPI service for CodeInspectorAI.
 
 Endpoints
 ---------
-GET  /              service banner
 GET  /health        readiness probe (reports which credentials are configured)
-POST /webhook       GitHub pull_request webhook -> queues a review
+POST /webhook       GitHub webhook: pull_request queues a review; installation
+                    events keep track of who has the GitHub App installed
 POST /review        manual trigger, useful for testing and re-runs
+
+The landing page, dashboard and their JSON API live in app/web.py.
 """
 
 from __future__ import annotations
@@ -15,6 +17,7 @@ import logging
 from typing import Any, Dict, Optional
 
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from app.config import (
@@ -25,8 +28,9 @@ from app.config import (
     POST_COMMENTS,
     TRIGGER_ACTIONS,
 )
-from app.github import verify_webhook_signature
-from graph.graph import run_pr_review
+from app.github import app_configured, forget_installation, use_token, verify_webhook_signature
+from app.runner import get_store, is_public_repo, resolve_token, run_tracked
+from app.web import STATIC_DIR, router as web_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -39,6 +43,8 @@ app = FastAPI(
     description="AI pull request reviewer built on LangGraph + Groq.",
     version="1.0.0",
 )
+app.include_router(web_router)
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 class ReviewRequest(BaseModel):
@@ -65,25 +71,24 @@ def _summarise(result: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _run_review_task(payload: Dict[str, Any]) -> None:
+def _run_review_task(payload: Dict[str, Any], source: str = "webhook",
+                     is_public: Optional[bool] = None) -> None:
     """Background worker so GitHub is not kept waiting for the LLM calls."""
-    label = "{o}/{r}#{n}".format(
-        o=payload.get("owner"), r=payload.get("repo_name"), n=payload.get("pr_number")
-    )
+    owner, repo, number = payload.get("owner"), payload.get("repo_name"), payload.get("pr_number")
+    label = "{o}/{r}#{n}".format(o=owner, r=repo, n=number)
     try:
-        result = run_pr_review(payload)
+        token = resolve_token(owner, repo, payload.get("installation_id"))
+        if is_public is None:
+            with use_token(token):
+                # Unknown visibility is treated as private so the dashboard never leaks it.
+                is_public = bool(is_public_repo(owner, repo))
+        review_id = get_store().create(
+            source=source, owner=owner, repo=repo, pr_number=number, is_public=is_public,
+        )
+        result = run_tracked(review_id, payload, token=token)
         logger.info("Review finished for %s: %s", label, _summarise(result))
     except Exception:
         logger.exception("Review crashed for %s", label)
-
-
-@app.get("/")
-def root() -> Dict[str, Any]:
-    return {
-        "service": "CodeInspectorAI",
-        "status": "running",
-        "docs": "/docs",
-    }
 
 
 @app.get("/health")
@@ -93,6 +98,7 @@ def health() -> Dict[str, Any]:
         "model": GROQ_MODEL,
         "groq_key_configured": bool(GROQ_API_KEY),
         "github_token_configured": bool(GITHUB_TOKEN),
+        "github_app_configured": app_configured(),
         "webhook_secret_configured": bool(GITHUB_WEBHOOK_SECRET),
         "post_comments": POST_COMMENTS,
     }
@@ -104,7 +110,9 @@ def review(request: ReviewRequest, background_tasks: BackgroundTasks) -> Dict[st
     if not GROQ_API_KEY:
         raise HTTPException(status_code=503, detail="GROQ_API_KEY is not configured.")
 
-    background_tasks.add_task(_run_review_task, request.model_dump(exclude_none=True))
+    background_tasks.add_task(
+        _run_review_task, request.model_dump(exclude_none=True), "api"
+    )
     return {
         "status": "queued",
         "target": "{o}/{r}#{n}".format(
@@ -128,13 +136,16 @@ async def github_webhook(
 
     if x_github_event == "ping":
         return {"status": "pong"}
-    if x_github_event != "pull_request":
+    if x_github_event not in ("pull_request", "installation", "installation_repositories"):
         return {"status": "ignored", "reason": "event " + (x_github_event or "unknown")}
 
     try:
         payload = await request.json()
     except Exception:
         raise HTTPException(status_code=400, detail="Malformed JSON payload.")
+
+    if x_github_event != "pull_request":
+        return _record_installation(payload)
 
     action = payload.get("action", "")
     if action not in TRIGGER_ACTIONS:
@@ -152,12 +163,45 @@ async def github_webhook(
     if not (owner and repo_name and pr_number):
         raise HTTPException(status_code=400, detail="Payload is missing repo/PR fields.")
 
-    background_tasks.add_task(
-        _run_review_task,
-        {"owner": owner, "repo_name": repo_name, "pr_number": pr_number},
-    )
+    task = {"owner": owner, "repo_name": repo_name, "pr_number": pr_number}
+    installation_id = (payload.get("installation") or {}).get("id")
+    if installation_id:
+        task["installation_id"] = installation_id
+    is_public = None if "private" not in repository else not repository["private"]
+    background_tasks.add_task(_run_review_task, task, "webhook", is_public)
     logger.info("Queued review for %s/%s#%s (%s)", owner, repo_name, pr_number, action)
     return {
         "status": "queued",
         "target": "{o}/{r}#{n}".format(o=owner, r=repo_name, n=pr_number),
     }
+
+
+_INSTALLATION_STATUS = {
+    "created": "active", "unsuspend": "active", "new_permissions_accepted": "active",
+    "deleted": "removed", "suspend": "suspended",
+}
+
+
+def _record_installation(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Keep the installations table in step with installs, uninstalls and repo changes."""
+    installation = payload.get("installation") or {}
+    installation_id = installation.get("id")
+    if not installation_id:
+        raise HTTPException(status_code=400, detail="Payload is missing the installation.")
+
+    action = payload.get("action", "")
+    # installation_repositories (added/removed) means the install is still live.
+    status = _INSTALLATION_STATUS.get(action, "active")
+    account = installation.get("account") or {}
+    get_store().save_installation(
+        installation_id,
+        account=account.get("login", "unknown"),
+        account_type=account.get("type", ""),
+        repo_selection=installation.get("repository_selection", ""),
+        status=status,
+    )
+    if status != "active":
+        # GitHub revokes the access itself; just stop reusing a cached token.
+        forget_installation(installation_id)
+    logger.info("Installation %s on %s: %s", installation_id, account.get("login"), action)
+    return {"status": "recorded", "installation": installation_id, "state": status}

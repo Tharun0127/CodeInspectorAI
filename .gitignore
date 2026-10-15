@@ -24,3 +24,5 @@ Thumbs.db
 
 # Prompt files are kept out of the published repo.
 prompts/
+
+data/

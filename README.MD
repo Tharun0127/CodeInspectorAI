@@ -240,6 +240,20 @@ All of these detect the `Dockerfile` automatically. Set the same environment var
 as in `.env.example`, expose the port the platform assigns via `$PORT`, and use `/health`
 as the health check path.
 
+### Web UI & dashboard
+
+The service also serves a landing page at `/`, with a live "paste a PR URL" demo, and a
+review dashboard at `/dashboard`.
+
+- **Demo reviews** are always dry runs (nothing is posted), only work on public repos,
+  and are rate-limited per visitor (`DEMO_RATE_LIMIT`, default 5/hour). Set
+  `DEMO_ENABLED=false` to turn the demo off.
+- **The dashboard is public but only shows public-repo reviews.** Private-repo reviews
+  appear only after you unlock the dashboard with `DASHBOARD_TOKEN`.
+- **History** is stored in SQLite under `DATA_DIR` (`/app/data` in the container).
+  Render's free plan has no persistent disk, so history resets on each deploy or restart.
+  Attach a disk mounted at `/app/data` on a paid plan to keep it.
+
 ### Custom prompts in production
 
 `prompts/` is git-ignored, so deploys built from the repo use the built-in fallback

@@ -119,7 +119,7 @@ class TestFullRun:
 
     def test_posts_comment_when_enabled(self, monkeypatch, fake_pr):
         wire_fakes(monkeypatch, fake_pr, ReviewResult(code_quality_score=8.0))
-        monkeypatch.setattr(post_node, "GITHUB_TOKEN", "ghp_test")
+        monkeypatch.setattr(post_node, "current_token", lambda: "ghp_test")
         monkeypatch.setattr(post_node, "get_pr", lambda *_: fake_pr)
 
         result = graph_module.run_pr_review(

@@ -330,7 +330,7 @@ class TestPostReviewNode:
         assert result["review_status"] == "failed"
 
     def test_posts_and_returns_url(self, monkeypatch, base_state, fake_pr):
-        monkeypatch.setattr(post_node, "GITHUB_TOKEN", "ghp_test")
+        monkeypatch.setattr(post_node, "current_token", lambda: "ghp_test")
         monkeypatch.setattr(post_node, "get_pr", lambda *_: fake_pr)
         monkeypatch.setattr(post_node, "post_pr_comment", lambda pr, body: "https://x/1")
 
@@ -341,7 +341,7 @@ class TestPostReviewNode:
         assert result["review_status"] == "success"
 
     def test_missing_token_is_partial_not_crash(self, monkeypatch, base_state):
-        monkeypatch.setattr(post_node, "GITHUB_TOKEN", "")
+        monkeypatch.setattr(post_node, "current_token", lambda: "")
         result = post_node.post_review(
             {**base_state, "formatted_comment": "body", "post_comment": True}
         )
@@ -349,7 +349,7 @@ class TestPostReviewNode:
         assert "GITHUB_TOKEN" in result["errors"][0]
 
     def test_prior_errors_downgrade_status(self, monkeypatch, base_state):
-        monkeypatch.setattr(post_node, "GITHUB_TOKEN", "ghp_test")
+        monkeypatch.setattr(post_node, "current_token", lambda: "ghp_test")
         monkeypatch.setattr(post_node, "get_pr", lambda *_: object())
         monkeypatch.setattr(post_node, "post_pr_comment", lambda pr, body: "https://x/1")
 

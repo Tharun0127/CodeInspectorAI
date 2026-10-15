@@ -43,9 +43,40 @@ GITHUB_TOKEN: str = os.getenv("GITHUB_TOKEN", "").strip()
 GITHUB_API_URL: str = os.getenv("GITHUB_API_URL", "https://api.github.com").rstrip("/")
 GITHUB_WEBHOOK_SECRET: str = os.getenv("GITHUB_WEBHOOK_SECRET", "").strip()
 
+# ---- GitHub App (optional, recommended) ----
+# When set, every review authenticates as the app's installation on that repo,
+# with a short-lived token, and comments appear as "<app>[bot]".
+GITHUB_APP_ID: str = os.getenv("GITHUB_APP_ID", "").strip()
+GITHUB_APP_SLUG: str = os.getenv("GITHUB_APP_SLUG", "").strip()
+
+
+def _read_private_key() -> str:
+    """PEM from GITHUB_APP_PRIVATE_KEY (literal or with \\n escapes) or a file path."""
+    path = os.getenv("GITHUB_APP_PRIVATE_KEY_PATH", "").strip()
+    if path:
+        try:
+            return Path(path).read_text(encoding="utf-8").strip()
+        except OSError:
+            return ""
+    # Many hosts only take single-line values, so accept a literal "\n" too.
+    return os.getenv("GITHUB_APP_PRIVATE_KEY", "").strip().replace("\\n", "\n")
+
+
+GITHUB_APP_PRIVATE_KEY: str = _read_private_key()
+
 # ---- Behaviour ----
 POST_COMMENTS: bool = _env_bool("POST_COMMENTS", True)
 MAX_DIFF_CHARS: int = _env_int("MAX_DIFF_CHARS", 15_000)
+
+# ---- Web UI / dashboard ----
+# Review history lives in a SQLite file here. Mount a persistent disk in production.
+DATA_DIR: Path = Path(os.getenv("DATA_DIR", "").strip() or BASE_DIR / "data")
+# Unlocks private-repo reviews on the dashboard. Unset = public repos only.
+DASHBOARD_TOKEN: str = os.getenv("DASHBOARD_TOKEN", "").strip()
+# The landing-page "try it" box: always a dry run, public repos only.
+DEMO_ENABLED: bool = _env_bool("DEMO_ENABLED", True)
+DEMO_RATE_LIMIT: int = _env_int("DEMO_RATE_LIMIT", 5)  # per visitor per hour
+REVIEW_CONCURRENCY: int = max(1, _env_int("REVIEW_CONCURRENCY", 2))
 
 # PR events that should trigger a review.
 TRIGGER_ACTIONS = {"opened", "reopened", "synchronize", "ready_for_review"}

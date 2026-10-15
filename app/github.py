@@ -10,18 +10,42 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
-from typing import Any, Dict, List, Optional
+import threading
+import time
+from contextlib import contextmanager
+from contextvars import ContextVar
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import requests
-from github import Auth, Github, GithubException
+from github import Auth, Github, GithubException, GithubIntegration
 from github.PullRequest import PullRequest
 
+from app import config
 from app.config import GITHUB_API_URL, GITHUB_TOKEN, GITHUB_WEBHOOK_SECRET
 
 logger = logging.getLogger(__name__)
 
 # Marker used to recognise (and replace) our own previous review comment.
 REVIEW_MARKER = "<!-- codeinspector-ai-review -->"
+
+# The token for the review running in this context. When the GitHub App is set
+# up, each review gets its installation's short-lived token here; otherwise it
+# stays empty and GITHUB_TOKEN is used.
+_review_token: ContextVar[Optional[str]] = ContextVar("github_review_token", default=None)
+
+
+def current_token() -> str:
+    return _review_token.get() or GITHUB_TOKEN
+
+
+@contextmanager
+def use_token(token: Optional[str]) -> Iterator[None]:
+    """Run a block of GitHub calls with a specific token."""
+    reset = _review_token.set(token)
+    try:
+        yield
+    finally:
+        _review_token.reset(reset)
 
 
 def get_client() -> Github:
@@ -31,10 +55,63 @@ def get_client() -> Github:
     A token is optional for reading public repositories, but required to post
     the review back to the PR.
     """
-    if GITHUB_TOKEN:
-        return Github(auth=Auth.Token(GITHUB_TOKEN), base_url=GITHUB_API_URL)
-    logger.warning("GITHUB_TOKEN not set - using unauthenticated access (60 req/h, read-only).")
+    token = current_token()
+    if token:
+        return Github(auth=Auth.Token(token), base_url=GITHUB_API_URL)
+    logger.warning("No GitHub credentials - using unauthenticated access (60 req/h, read-only).")
     return Github(base_url=GITHUB_API_URL)
+
+
+# ---------------------------------------------------------------- GitHub App
+
+# installation id -> (token, expiry epoch). Tokens live for an hour; we refresh
+# them five minutes early so a long review never holds an expired one.
+_token_cache: Dict[int, Tuple[str, float]] = {}
+_token_lock = threading.Lock()
+_REFRESH_MARGIN = 300
+
+
+def app_configured() -> bool:
+    return bool(config.GITHUB_APP_ID and config.GITHUB_APP_PRIVATE_KEY)
+
+
+def _integration() -> GithubIntegration:
+    auth = Auth.AppAuth(int(config.GITHUB_APP_ID), config.GITHUB_APP_PRIVATE_KEY)
+    return GithubIntegration(auth=auth, base_url=GITHUB_API_URL)
+
+
+def get_installation_token(installation_id: int) -> str:
+    """A short-lived token scoped to the repos this installation was granted."""
+    installation_id = int(installation_id)
+    with _token_lock:
+        cached = _token_cache.get(installation_id)
+        if cached and cached[1] - _REFRESH_MARGIN > time.time():
+            return cached[0]
+
+    grant = _integration().get_access_token(installation_id)
+    expires = grant.expires_at.timestamp() if grant.expires_at else time.time() + 3600
+    with _token_lock:
+        _token_cache[installation_id] = (grant.token, expires)
+    return grant.token
+
+
+def forget_installation(installation_id: int) -> None:
+    """Drop a cached token, e.g. when the app is uninstalled."""
+    with _token_lock:
+        _token_cache.pop(int(installation_id), None)
+
+
+def find_installation_id(owner: str, repo: str) -> Optional[int]:
+    """The app's installation covering owner/repo, or None if it isn't installed there."""
+    try:
+        return _integration().get_repo_installation(owner, repo).id
+    except GithubException:
+        return None
+
+
+def install_url() -> str:
+    slug = config.GITHUB_APP_SLUG
+    return f"https://github.com/apps/{slug}/installations/new" if slug else ""
 
 
 def get_pr(repo_full_name: str, pr_number: int) -> PullRequest:
@@ -51,8 +128,9 @@ def get_pr_diff(pr: PullRequest) -> str:
     token, or an oversized diff) the per-file patches are stitched together.
     """
     headers = {"Accept": "application/vnd.github.v3.diff"}
-    if GITHUB_TOKEN:
-        headers["Authorization"] = "Bearer " + GITHUB_TOKEN
+    token = current_token()
+    if token:
+        headers["Authorization"] = "Bearer " + token
 
     try:
         response = requests.get(pr.url, headers=headers, timeout=30)
@@ -133,8 +211,13 @@ def post_pr_comment(pr: PullRequest, body: str, replace_previous: bool = True) -
     if replace_previous:
         existing = find_previous_review_comment(pr)
         if existing is not None:
-            existing.edit(body_with_marker)
-            return existing.html_url
+            try:
+                existing.edit(body_with_marker)
+                return existing.html_url
+            except GithubException as exc:
+                # Someone else's comment carrying our marker, or one left by a
+                # different identity (e.g. before switching to the GitHub App).
+                logger.info("Could not edit previous review (%s); posting a new one.", exc.status)
 
     comment = pr.create_issue_comment(body_with_marker)
     return comment.html_url

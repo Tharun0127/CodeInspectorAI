@@ -17,7 +17,8 @@ client = TestClient(main_module.app)
 def captured_reviews(monkeypatch):
     """Replace the background worker so no review actually runs."""
     calls = []
-    monkeypatch.setattr(main_module, "_run_review_task", calls.append)
+    monkeypatch.setattr(main_module, "_run_review_task",
+                        lambda payload, *args: calls.append(payload))
     return calls
 
 
@@ -31,7 +32,7 @@ def pr_payload(action="opened", draft=False, number=7):
 
 class TestBasics:
     def test_root(self):
-        assert client.get("/").json()["service"] == "CodeInspectorAI"
+        assert client.get("/api").json()["service"] == "CodeInspectorAI"
 
     def test_health_reports_configuration(self):
         body = client.get("/health").json()

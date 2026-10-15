@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Review Dashboard · CodeInspectorAI</title>
+  <meta name="description" content="Every pull request CodeInspectorAI has reviewed: verdicts, quality scores, security findings and agent timing.">
+  <meta name="theme-color" content="#07090d">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%233df5a7'/><text x='16' y='22' font-family='monospace' font-size='15' font-weight='800' text-anchor='middle' fill='%2304140d'>{}</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/dashboard.css">
+</head>
+<body>
+  <div class="bg-grid" aria-hidden="true"></div>
+  <div class="bg-spot" aria-hidden="true"></div>
+
+  <nav class="nav">
+    <div class="wrap">
+      <a class="brand" href="/"><span class="brand-mark">{}</span>CodeInspectorAI <small>dashboard</small></a>
+      <div class="nav-links">
+        <a class="hide-sm" href="/">Home</a>
+        <a href="/dashboard" aria-current="page">Dashboard</a>
+        <a class="hide-sm" href="/docs">API</a>
+        <a class="btn btn-primary" href="/">+ New review</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="wrap dash">
+    <div class="dash-head">
+      <div>
+        <span class="eyebrow"><span class="dot pulse" id="live-dot"></span><span id="live-label">live · refreshes every 10s</span></span>
+        <h1>Review activity</h1>
+        <p class="muted" id="scope-note">Showing reviews of public repositories.</p>
+      </div>
+      <div class="dash-actions">
+        <button class="btn" id="lock-btn" aria-expanded="false" aria-controls="token-form">🔒 Unlock private repos</button>
+        <form class="token-form card hidden" id="token-form">
+          <label for="token-input">Dashboard token</label>
+          <p class="muted">The <code>DASHBOARD_TOKEN</code> set on the server. Stored only in this browser.</p>
+          <input id="token-input" type="password" autocomplete="off" placeholder="paste token">
+          <div class="row"><button type="button" class="btn btn-ghost" id="token-cancel">Cancel</button><button class="btn btn-primary">Unlock</button></div>
+          <p class="form-error hidden" id="token-error"></p>
+        </form>
+      </div>
+    </div>
+
+    <section class="kpis" aria-label="Key numbers">
+      <div class="kpi card"><span class="k-label">PRs reviewed</span><b data-kpi="total">–</b><span class="k-sub" data-kpi-sub="total"></span></div>
+      <div class="kpi card"><span class="k-label">Avg. quality score</span><b data-kpi="avg_score">–</b><span class="k-sub">out of 10</span></div>
+      <div class="kpi card"><span class="k-label">Review comments</span><b data-kpi="comments">–</b><span class="k-sub">bugs, style, design</span></div>
+      <div class="kpi card"><span class="k-label">Security findings</span><b data-kpi="security">–</b><span class="k-sub" data-kpi-sub="security"></span></div>
+      <div class="kpi card"><span class="k-label">Avg. review time</span><b data-kpi="avg_duration">–</b><span class="k-sub">fetch → posted</span></div>
+    </section>
+
+    <section class="charts">
+      <article class="chart card" data-chart="per_day">
+        <header><h2>Reviews · last 14 days</h2><button class="tbl-toggle" aria-pressed="false">table</button></header>
+        <div class="chart-body"></div>
+      </article>
+      <article class="chart card" data-chart="verdicts">
+        <header><h2>Verdict mix</h2><button class="tbl-toggle" aria-pressed="false">table</button></header>
+        <div class="chart-body"></div>
+      </article>
+      <article class="chart card" data-chart="scores">
+        <header><h2>Quality score distribution</h2><button class="tbl-toggle" aria-pressed="false">table</button></header>
+        <div class="chart-body"></div>
+      </article>
+      <article class="chart card" data-chart="languages">
+        <header><h2>Languages reviewed</h2><button class="tbl-toggle" aria-pressed="false">table</button></header>
+        <div class="chart-body"></div>
+      </article>
+    </section>
+
+    <section class="card table-card">
+      <div class="table-head">
+        <h2>Recent reviews</h2>
+        <div class="filters">
+          <input type="search" id="search" placeholder="Filter by repo, title, author…" aria-label="Filter reviews">
+          <div class="chips" role="group" aria-label="Verdict filter">
+            <button class="chip" aria-pressed="true" data-filter="all">All</button>
+            <button class="chip" aria-pressed="false" data-filter="changes_requested">✕ Changes</button>
+            <button class="chip" aria-pressed="false" data-filter="approved_with_comments">● Comments</button>
+            <button class="chip" aria-pressed="false" data-filter="approved">✓ Approved</button>
+            <button class="chip" aria-pressed="false" data-filter="active">◌ Running</button>
+          </div>
+        </div>
+      </div>
+      <div class="table-scroll">
+        <table class="reviews">
+          <thead><tr><th>Pull request</th><th>Verdict</th><th class="num">Score</th><th class="num">Findings</th><th>Source</th><th class="num">Time</th><th>When</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <div class="empty hidden" id="empty"></div>
+    </section>
+  </main>
+
+  <aside class="drawer" id="drawer" aria-hidden="true">
+    <div class="drawer-backdrop" data-close></div>
+    <div class="drawer-panel" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
+      <div class="drawer-head">
+        <span class="mono muted" id="drawer-title">review</span>
+        <button class="btn btn-ghost" data-close aria-label="Close">✕</button>
+      </div>
+      <div class="drawer-body">
+        <div id="drawer-pipeline" class="card" style="padding:20px"></div>
+        <div id="drawer-result" style="margin-top:20px"></div>
+      </div>
+    </div>
+  </aside>
+
+  <footer>
+    <div class="wrap">
+      <span><span class="mono">{}</span> CodeInspectorAI</span>
+      <span style="display:flex;gap:18px"><a href="/">Home</a><a href="/docs">API docs</a><a href="https://github.com/Tharun0127/CodeInspectorAI" target="_blank" rel="noopener">GitHub</a></span>
+    </div>
+  </footer>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js" defer></script>
+  <script src="/static/common.js" defer></script>
+  <script src="/static/dashboard.js" defer></script>
+</body>
+</html>
