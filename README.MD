@@ -6,15 +6,19 @@
 
 Fetches a GitHub PR, reviews the diff and hunts for vulnerabilities **in parallel**,
 then posts one structured, actionable review comment back on the PR.
+Install it as a **GitHub App**, try it on any public PR from the website, and watch every
+review on a live dashboard.
+
+**[🌐 Live site](https://code-inspector-ai.vercel.app/)** · **[📊 Dashboard](https://code-inspector-ai.vercel.app/dashboard)**
 
 [![tests](https://github.com/Tharun0127/CodeInspectorAI/actions/workflows/tests.yml/badge.svg)](https://github.com/Tharun0127/CodeInspectorAI/actions/workflows/tests.yml)
 [![Python](https://img.shields.io/badge/python-3.11%20|%203.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-0.2-1C3C3C?logo=langchain&logoColor=white)](https://langchain-ai.github.io/langgraph/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Groq](https://img.shields.io/badge/Groq-gpt--oss--120b-F55036?logo=groq&logoColor=white)](https://groq.com/)
-[![tests](https://img.shields.io/badge/tests-101%20passing-brightgreen)](#-testing)
+[![tests](https://img.shields.io/badge/tests-144%20passing-brightgreen)](#-testing)
 
-[Architecture](#-architecture) • [Sample Output](#-sample-output) • [Quick Start](#-quick-start) • [Deploy](#️-deploy) • [Engineering Notes](#-engineering-notes) • [Testing](#-testing)
+[Architecture](#-architecture) • [Sample Output](#-sample-output) • [Quick Start](#-quick-start) • [Web UI](#️-web-ui--dashboard) • [Deploy](#️-deploy) • [GitHub App](#-github-app-let-anyone-install-it) • [Engineering Notes](#-engineering-notes) • [Testing](#-testing)
 
 </div>
 
@@ -43,7 +47,10 @@ automatically, on every push.
 | 🩹 | **Fail-soft by design** | Any node can die without killing the run. Lose the security scan and you still get the review, flagged `partial` with the error disclosed |
 | 🔁 | **Idempotent comments** | Pushing 10 commits updates **one** comment in place instead of spamming ten |
 | 🎯 | **Smart diff budgeting** | Lockfiles, minified bundles and binaries are stripped; what's omitted is named in the prompt so the model knows its view is partial |
-| 🔌 | **Three entry points** | GitHub webhook, REST API, or CLI — same graph behind all of them |
+| 🤖 | **GitHub App** | Anyone can install it on the repos they choose. Each review runs on a short-lived token scoped to that installation, and comments come from a `[bot]` account |
+| 🖥️ | **Live web demo** | Paste any public PR URL and watch the agents run step by step, then see the findings, a preview of the PR comment and the agent timing |
+| 📊 | **Review dashboard** | Verdicts, quality scores, security findings and review times across every PR, with charts and a searchable history |
+| 🔌 | **Four entry points** | GitHub App / webhook, website, REST API, or CLI — same graph behind all of them |
 | 🔒 | **Verified webhooks** | HMAC-SHA256 signature checking, draft-PR filtering, background execution so GitHub never waits on an LLM |
 
 ---
@@ -55,7 +62,7 @@ agents genuinely run in parallel and the workflow can abort early without burnin
 
 ```mermaid
 flowchart TD
-    A["🌐 GitHub Webhook<br/>· REST API · CLI"] --> B["📥 Fetch Context"]
+    A["🌐 GitHub App / Webhook<br/>· Website · REST API · CLI"] --> B["📥 Fetch Context"]
     B -->|"PR fetch failed"| Z["🏁 END"]
     B --> C["📝 Code Review Agent"]
     B --> D["🛡️ Security Agent"]
@@ -154,10 +161,20 @@ python -m app.cli pallets/flask 6136 --dry-run
 | --- | :-: | --- | --- |
 | `GROQ_API_KEY` | ✅ | — | [console.groq.com/keys](https://console.groq.com/keys) |
 | `GROQ_MODEL` | — | `openai/gpt-oss-120b` | Any Groq chat model |
-| `GITHUB_TOKEN` | to post | — | Fine-grained PAT · `Pull requests: read & write` |
-| `GITHUB_WEBHOOK_SECRET` | recommended | — | Verifies `X-Hub-Signature-256` |
+| `GITHUB_TOKEN` | to post* | — | Fine-grained PAT · `Pull requests: read & write` |
+| `GITHUB_WEBHOOK_SECRET` | recommended | — | Verifies `X-Hub-Signature-256` (the App's webhook secret when using one) |
+| `GITHUB_APP_ID` | for the App | — | See [GitHub App](#-github-app-let-anyone-install-it) |
+| `GITHUB_APP_SLUG` | for the App | — | From `https://github.com/apps/<slug>`; powers the Install button |
+| `GITHUB_APP_PRIVATE_KEY` | for the App | — | The `.pem` key, or set `GITHUB_APP_PRIVATE_KEY_PATH` |
 | `POST_COMMENTS` | — | `true` | `false` = run everything, post nothing |
 | `MAX_DIFF_CHARS` | — | `15000` | Diff budget per LLM node |
+| `DASHBOARD_TOKEN` | — | — | Unlocks private-repo reviews on the dashboard |
+| `DEMO_ENABLED` | — | `true` | The website's "try it" box |
+| `DEMO_RATE_LIMIT` | — | `5` | Demo reviews per visitor per hour |
+| `REVIEW_CONCURRENCY` | — | `2` | Reviews that may run at the same time |
+| `DATA_DIR` | — | `./data` | Where review history (SQLite) is stored |
+
+<sub>* Not needed on repos where the GitHub App is installed; the App's own token is used there.</sub>
 
 > ⚠️ Groq retires models regularly. If a run fails with a model error, list what your
 > account can use:
@@ -183,11 +200,18 @@ python -m app.cli owner/repo 42 --save out.md   # save the markdown
 uvicorn app.main:app --reload --port 8000
 ```
 
+Then open http://localhost:8000 for the website and http://localhost:8000/dashboard.
+
 | Endpoint | Purpose |
 | --- | --- |
+| `GET /` | Landing page with the live "try it" demo |
+| `GET /dashboard` | Review history, stats and charts |
 | `GET /health` | Readiness + which credentials are configured |
 | `POST /review` | Manual trigger — `{"owner", "repo_name", "pr_number"}` |
-| `POST /webhook` | GitHub `pull_request` webhook receiver |
+| `POST /webhook` | GitHub webhook: pull requests, plus App install/uninstall events |
+| `POST /api/reviews` | Start a demo review — `{"pr_url": "https://github.com/o/r/pull/1"}` |
+| `GET /api/reviews[/{id}]` | Recent reviews, or one review with live step progress |
+| `GET /api/stats` | Numbers behind the dashboard |
 | `GET /docs` | Interactive OpenAPI docs |
 
 ### GitHub webhook
@@ -201,6 +225,34 @@ Point a repository webhook at `https://<your-host>/webhook`:
 Reviews fire on `opened`, `reopened`, `synchronize` and `ready_for_review`. Drafts are
 skipped. The endpoint returns immediately and the review runs in the background, so
 GitHub's 10-second webhook timeout is never at risk.
+
+---
+
+## 🖥️ Web UI & dashboard
+
+The same server hosts the website. No separate frontend build: plain HTML, CSS and JS
+in `app/static/`.
+
+**Landing page (`/`)**: paste a public PR URL and watch the run live. The five agent
+nodes light up as they finish, a console logs each step with timestamps, and the result
+shows the verdict, a quality-score ring, findings sorted by severity with suggested
+fixes, a preview of the exact comment the bot would post, and a timing chart that
+shows how much time running the two agents in parallel saved. Every result has a
+shareable link (`/?r=<id>`).
+
+**Dashboard (`/dashboard`)**: totals, average quality score, findings and review time;
+charts for reviews per day, verdict mix, score distribution and languages (each with a
+table view); and a searchable, filterable history. Click any review to open it in full.
+It refreshes every 10 seconds.
+
+Safe to leave public:
+
+- **Demo reviews are dry runs.** Nothing is posted, private repos are refused (so nobody
+  can use the server's token to read private code), and each visitor gets
+  `DEMO_RATE_LIMIT` reviews per hour. `DEMO_ENABLED=false` turns the demo off.
+- **The dashboard only shows public-repo reviews** until it's unlocked with
+  `DASHBOARD_TOKEN`, which is kept only in that browser.
+- **History** is stored in SQLite under `DATA_DIR` (`/app/data` in the container).
 
 ---
 
@@ -224,15 +276,21 @@ built-in `HEALTHCHECK` against `/health`.
 
 ### Render (one click)
 
-`render.yaml` is a Render Blueprint. In the Render dashboard choose **New → Blueprint**,
-pick this repo, and fill in `GROQ_API_KEY` and `GITHUB_TOKEN` when prompted.
-`GITHUB_WEBHOOK_SECRET` is generated for you; copy it from the service's
-**Environment** tab into the GitHub webhook settings. Then point the webhook at
-`https://<service>.onrender.com/webhook`.
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Tharun0127/CodeInspectorAI)
 
-> Render's free plan sleeps after ~15 minutes idle. The first webhook after a sleep
-> wakes it but can exceed GitHub's 10-second timeout, so GitHub marks that delivery as
-> failed even though the review still runs. Use a paid instance for reliable delivery.
+`render.yaml` is a Render Blueprint: click the button above (or **New → Blueprint** in the
+Render dashboard and pick this repo) and fill in `GROQ_API_KEY` and `GITHUB_TOKEN` when
+prompted. Leave the `GITHUB_APP_*` values empty until you've registered the
+[GitHub App](#-github-app-let-anyone-install-it). `GITHUB_WEBHOOK_SECRET` and
+`DASHBOARD_TOKEN` are generated for you; find them in the service's **Environment** tab.
+
+> Render's free plan sleeps after ~15 minutes idle. The first request after a sleep takes
+> about a minute, and can exceed GitHub's 10-second webhook timeout, so GitHub marks that
+> delivery as failed even though the review still runs. Use a paid instance for reliable
+> delivery.
+>
+> The free plan also has no persistent disk, so dashboard history resets on each deploy
+> or restart. On a paid plan, attach a disk mounted at `/app/data` to keep it.
 
 ### Railway / Fly.io / a VPS
 
@@ -240,19 +298,18 @@ All of these detect the `Dockerfile` automatically. Set the same environment var
 as in `.env.example`, expose the port the platform assigns via `$PORT`, and use `/health`
 as the health check path.
 
-### Web UI & dashboard
+### Why not Vercel (or Lambda) on its own?
 
-The service also serves a landing page at `/`, with a live "paste a PR URL" demo, and a
-review dashboard at `/dashboard`.
+Vercel can serve the pages, but it can't run reviews dependably:
 
-- **Demo reviews** are always dry runs (nothing is posted), only work on public repos,
-  and are rate-limited per visitor (`DEMO_RATE_LIMIT`, default 5/hour). Set
-  `DEMO_ENABLED=false` to turn the demo off.
-- **The dashboard is public but only shows public-repo reviews.** Private-repo reviews
-  appear only after you unlock the dashboard with `DASHBOARD_TOKEN`.
-- **History** is stored in SQLite under `DATA_DIR` (`/app/data` in the container).
-  Render's free plan has no persistent disk, so history resets on each deploy or restart.
-  Attach a disk mounted at `/app/data` on a paid plan to keep it.
+- Reviews run in the background after the request returns, and serverless functions are
+  frozen at that point.
+- The live demo polls the server that is running the review, but serverless requests can
+  land on a different instance that knows nothing about it.
+- The filesystem is temporary, so dashboard history doesn't survive.
+
+To use a Vercel domain, run the app on Render (or any host above) and have Vercel
+forward every request to it with a rewrite.
 
 ### Custom prompts in production
 
@@ -304,16 +361,16 @@ Run as a **GitHub App**, CodeInspectorAI works like any app from the Marketplace
    ```bash
    GITHUB_APP_ID=123456
    GITHUB_APP_SLUG=codeinspectorai          # from https://github.com/apps/<slug>
-   GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----
-...
------END RSA PRIVATE KEY-----"
+   GITHUB_APP_PRIVATE_KEY=<contents of the .pem file>
    GITHUB_WEBHOOK_SECRET=<the webhook secret from step 2>
    ```
 
-   The key can be pasted with real newlines, on one line with `
-` separators, or
-   mounted as a file via `GITHUB_APP_PRIVATE_KEY_PATH` (e.g. a Render Secret File at
-   `/etc/secrets/github-app.pem`).
+   For the key, open the `.pem` file in a text editor and paste the whole thing,
+   `-----BEGIN` and `-----END` lines included. Real line breaks work, and so does one
+   line with a literal `\n` between lines. Or upload the file (e.g. as a Render
+   Secret File) and set `GITHUB_APP_PRIVATE_KEY_PATH=/etc/secrets/<file>.pem` instead.
+
+   Never commit the `.pem` file: anyone holding it can act as your app.
 
 5. Check `GET /health` shows `"github_app_configured": true`. The landing page now
    shows **Install on GitHub**, linking to `https://github.com/apps/<slug>/installations/new`.
@@ -418,6 +475,30 @@ The model knows what it doesn't know.
 Every posted review carries an invisible `<!-- codeinspector-ai-review -->` marker. On
 the next push the bot finds its own previous comment and **edits it in place**, so a
 20-commit branch has exactly one always-current review instead of a wall of noise.
+If that comment can't be edited (someone else's comment carrying the marker, or one
+left under a different identity), it posts a fresh one instead of failing.
+
+</details>
+
+<details>
+<summary><b>🤖 One token per review, never shared between them</b></summary>
+
+<br/>
+
+As a GitHub App, every review must act as *its* installation, and two reviews for two
+different users can run at the same time. So the token isn't a global: the runner
+mints the installation's token, then runs the graph inside `use_token(...)`, which sets
+a `ContextVar`. Every GitHub call (fetching the PR, the diff, posting the comment) reads
+it from there, and it's reset when the review ends. A test asserts that both the fetch
+and the post saw the installation's token, and that nothing leaked afterwards.
+
+Tokens are cached per installation and refreshed five minutes before they expire, and an
+uninstall event drops the cached token immediately.
+
+Live-testing the App against the real library turned up a nasty one: PyJWT ≥ 2.10
+rejects a numeric `iss` claim, and PyGithub passes the App ID through as-is. Every token
+request would have failed in production while every mocked test passed. The app ID is
+now passed as a string, and a regression test signs a real RSA key and decodes the JWT.
 
 </details>
 
@@ -426,7 +507,7 @@ the next push the bot finds its own previous comment and **edits it in place**, 
 ## 🧪 Testing
 
 ```bash
-python -m pytest          # 101 tests · ~4s · zero network calls
+python -m pytest          # 144 tests · ~4s · zero network calls
 ```
 
 <div align="center">
@@ -439,6 +520,8 @@ python -m pytest          # 101 tests · ~4s · zero network calls
 | `test_llm.py` | Structured-output retry/fallback, severity normalisation |
 | `test_api.py` | Endpoints, webhook filtering, HMAC signature verification |
 | `test_github.py` | Diff fallback, metadata extraction, comment replacement |
+| `test_github_app.py` | Installation tokens & caching, per-review identity, install events, JWT signing |
+| `test_web.py` | Review store, live progress, demo guards & rate limit, dashboard privacy, pages |
 
 </div>
 
@@ -455,15 +538,21 @@ nobody trusts.
 ├── app/
 │   ├── config.py       Environment/settings, prompt loading
 │   ├── llm.py          Groq factory + resilient structured-output helper
-│   ├── github.py       PR fetch, diff retrieval, posting, webhook signatures
+│   ├── github.py       PR fetch, diff, posting, webhook signatures, GitHub App tokens
 │   ├── main.py         FastAPI app (webhook + REST trigger)
-│   └── cli.py          Command line entry point
+│   ├── web.py          Website, dashboard and their JSON API
+│   ├── runner.py       Runs a review with live step tracking, as the right identity
+│   ├── store.py        SQLite review history + installations
+│   ├── cli.py          Command line entry point
+│   └── static/         Landing page + dashboard (plain HTML/CSS/JS, no build step)
 ├── graph/
 │   ├── state.py        ReviewState + Pydantic output schemas
 │   ├── utils.py        Diff parsing, language detection, verdict rules
 │   ├── graph.py        LangGraph wiring
 │   └── nodes/          context · review · security · summary · post_review
-└── tests/              101 offline tests
+├── tests/              144 offline tests
+├── Dockerfile          Production image (non-root, health check)
+└── render.yaml         One-click Render deploy
 ```
 
 > **Note:** the system prompts in `prompts/*.md` are loaded at runtime and are not
@@ -483,6 +572,9 @@ nobody trusts.
 | **Validation** | Pydantic v2 | Schema-bound LLM output — no fragile regex parsing of prose |
 | **API** | FastAPI | Async, background tasks, free OpenAPI docs |
 | **Integration** | PyGithub + REST | PyGithub for objects, raw REST for the diff media type it doesn't expose |
+| **Identity** | GitHub App | Per-install, per-repo, hour-long tokens instead of one shared personal token |
+| **Storage** | SQLite | Zero-ops review history; one file on a disk |
+| **Frontend** | Plain HTML/CSS/JS | Served by FastAPI itself: one deploy, no build step |
 
 </div>
 
@@ -495,6 +587,8 @@ nobody trusts.
 - [ ] Configurable per-repo rules through a `.codeinspector.yml`
 - [ ] Review-quality feedback loop from 👍/👎 reactions on posted comments
 - [x] Dockerfile + one-click deploy
+- [x] Website with a live demo + review dashboard
+- [x] GitHub App: install on any account, scoped short-lived tokens, `[bot]` comments
 
 ---
 
